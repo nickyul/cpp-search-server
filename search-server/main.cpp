@@ -57,10 +57,11 @@ public:
 	}
 
 	void AddDocument(int document_id, const string& document) {   // заполнение поля класса words_in_documents_ словами из строк документов,
-		document_count_ = document_count_ + 1;                    // значением по слову является словарь (id - tf)
+		document_count_ += 1;                    // значением по слову является словарь (id - tf)
 		vector <string> words = SplitIntoWordsNoStop(document);
+		double word_weight = 1.0 / words.size();
 		for (const string& word : words) {
-			words_in_documents_[word][document_id] = words_in_documents_[word][document_id] + 1.0 / words.size();
+			words_in_documents_[word][document_id] += word_weight;
 		}
 	}
 
@@ -137,14 +138,20 @@ private:
 		return query;
 	}
 
+	map<int, double> GetRelevance(map<int, double> data_of_word) {
+		map <int, double> result_rel_word;
+		double idf = log(document_count_ / data_of_word.size());
+		for (auto const& [id, tf] : data_of_word) {
+			result_rel_word[id] = idf * tf;
+		}
+	}
+
+
 	vector<Document> FindAllDocuments(const Query& query) const {   // возвращает релевантность и id документов по запросу
 		map<int, double> document_to_relevance;
 		for (const string& word : query.plus_words) {
-			if (!words_in_documents_.count(word) == 0) {
-				double znamenatel = words_in_documents_.at(word).size();
-				for (auto const& [id, tf] : words_in_documents_.at(word)) {
-					document_to_relevance[id] = (log(document_count_ / znamenatel) * tf) + document_to_relevance[id];
-				}
+			if (words_in_documents_.count(word) > 0) {
+				document_to_relevance += GetRelevance(words_in_documents_[word]);
 			}
 		}
 
