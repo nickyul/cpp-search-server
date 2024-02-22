@@ -7,6 +7,7 @@
 #include <utility>
 #include <vector>
 #include <optional>
+#include <numeric>
 
 
 using namespace std;
@@ -26,6 +27,20 @@ int ReadLineWithNumber() {
     cin >> result;
     ReadLine();
     return result;
+}
+
+bool IsQueryWordWithoutUnwantedMinus(const string& word) {
+    if (word.size() == 1) {
+        if (word[0] == '-') {
+            return false;
+        }
+    }
+    else {
+        if ((word[0] == '-' && word[1] == '-') || word[word.size() - 1] == '-') {
+            return false;
+        }
+    }
+    return true;
 }
 
 vector<string> SplitIntoWords(const string& text) {
@@ -130,26 +145,21 @@ public:
 
     template <typename DocumentPredicate>
     vector<Document> FindTopDocuments(const string& raw_query, DocumentPredicate document_predicate) const {
-        if (const auto query = ParseQuery(raw_query)) {
-            vector<Document> result = FindAllDocuments(*query, document_predicate);
-            sort(result.begin(), result.end(),
-                [](const Document& lhs, const Document& rhs) {
-                    if (abs(lhs.relevance - rhs.relevance) < MIN_RELEVANCE_DIFF) {
-                        return lhs.rating > rhs.rating;
-                    }
-                    else {
-                        return lhs.relevance > rhs.relevance;
-                    }
-                });
-            if (result.size() > MAX_RESULT_DOCUMENT_COUNT) {
-                result.resize(MAX_RESULT_DOCUMENT_COUNT);
-            }
-            return result;
+        Query query = ParseQuery(raw_query);
+        vector<Document> result = FindAllDocuments(query, document_predicate);
+        sort(result.begin(), result.end(),
+            [](const Document& lhs, const Document& rhs) {
+                if (abs(lhs.relevance - rhs.relevance) < MIN_RELEVANCE_DIFF) {
+                    return lhs.rating > rhs.rating;
+                }
+                else {
+                    return lhs.relevance > rhs.relevance;
+                }
+            });
+        if (result.size() > MAX_RESULT_DOCUMENT_COUNT) {
+            result.resize(MAX_RESULT_DOCUMENT_COUNT);
         }
-        else {
-            throw invalid_argument("Текст запроса содержит недопустимые конструкции");
-        }
-
+        return result;
     }
 
     vector<Document> FindTopDocuments(const string& raw_query, DocumentStatus status = DocumentStatus::ACTUAL) const {
@@ -161,29 +171,24 @@ public:
     }
 
     tuple<vector<string>, DocumentStatus> MatchDocument(const string& raw_query, int document_id) const {
-        Query query;
         vector<string> matched_words;
-        if (const auto query = ParseQuery(raw_query)) {
-            for (const string& word : query->plus_words) {
-                if (word_to_document_freqs_.count(word) == 0) {
-                    continue;
-                }
-                if (word_to_document_freqs_.at(word).count(document_id)) {
-                    matched_words.push_back(word);
-                }
+        Query query = ParseQuery(raw_query);
+        for (const string& word : query.plus_words) {
+            if (word_to_document_freqs_.count(word) == 0) {
+                continue;
             }
-            for (const string& word : query->minus_words) {
-                if (word_to_document_freqs_.count(word) == 0) {
-                    continue;
-                }
-                if (word_to_document_freqs_.at(word).count(document_id)) {
-                    matched_words.clear();
-                    break;
-                }
+            if (word_to_document_freqs_.at(word).count(document_id)) {
+                matched_words.push_back(word);
             }
         }
-        else {
-            throw invalid_argument("Текст запроса содержит недопустимые конструкции");
+        for (const string& word : query.minus_words) {
+            if (word_to_document_freqs_.count(word) == 0) {
+                continue;
+            }
+            if (word_to_document_freqs_.at(word).count(document_id)) {
+                matched_words.clear();
+                break;
+            }
         }
         return tuple{ matched_words, documents_.at(document_id).status };
     }
@@ -225,11 +230,7 @@ private:
         if (ratings.empty()) {
             return 0;
         }
-        int rating_sum = 0;
-        for (const int rating : ratings) {
-            rating_sum += rating;
-        }
-        return rating_sum / static_cast<int>(ratings.size());
+        return accumulate(ratings.begin(), ratings.end(), 0) / static_cast<int>(ratings.size());
     }
 
     struct QueryWord {
@@ -238,12 +239,11 @@ private:
         bool is_stop;
     };
 
-    [[nodiscard]] optional <QueryWord> ParseQueryWord(string text) const {
+    QueryWord ParseQueryWord(string text) const {
         QueryWord query_word;
         bool is_minus = false;
-        if ((text[0] == '-' && text[1] == '-') || text[text.size() - 1] == '-' ||
-            !IsValidWord(text) || (text[0] == '-' && text.size() == 1)) {
-            return nullopt;
+        if (!IsQueryWordWithoutUnwantedMinus(text) || !IsValidWord(text)) {
+            throw invalid_argument("Текст запроса содержит недопустимые конструкции");
         }
         else if (text[0] == '-') {
             is_minus = true;
@@ -258,21 +258,17 @@ private:
         set<string> minus_words;
     };
 
-    [[nodiscard]] optional<Query> ParseQuery(const string& text) const {
+    Query ParseQuery(const string& text) const {
         Query query;
         for (const string& word : SplitIntoWords(text)) {
-            if (const auto query_word = ParseQueryWord(word)) {
-                if (!query_word->is_stop) {
-                    if (query_word->is_minus) {
-                        query.minus_words.insert(query_word->data);
-                    }
-                    else {
-                        query.plus_words.insert(query_word->data);
-                    }
+            QueryWord query_word = ParseQueryWord(word);
+            if (!query_word.is_stop) {
+                if (query_word.is_minus) {
+                    query.minus_words.insert(query_word.data);
                 }
-            }
-            else {
-                return nullopt;
+                else {
+                    query.plus_words.insert(query_word.data);
+                }
             }
         }
         return query;
@@ -333,7 +329,7 @@ int main() {
         //cout << "2nd doc done"s << endl;
         //search_server.AddDocument(3, "большой пёс скво\x12рец"s, DocumentStatus::ACTUAL, { 1, 3, 2 });
         //cout << "3rd doc done"s << endl;
-        vector<Document> documents = search_server.FindTopDocuments("пушистый -"s);
+        vector<Document> documents = search_server.FindTopDocuments("кот"s);
         for (const Document& document : documents) {
             PrintDocument(document);
         }
