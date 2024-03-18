@@ -30,4 +30,3 @@ int main() {
     cout << "Total empty requests: "s << request_queue.GetNoResultRequests() << endl;
     return 0;
 }
-

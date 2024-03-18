@@ -1,10 +1,10 @@
 #pragma once
 #include <algorithm>
 #include <cmath>
-#include <utility>
 #include <tuple>
 #include <map>
 #include <stdexcept>
+#include <utility>
 
 #include "document.h"
 #include "string_processing.h"
@@ -14,9 +14,16 @@ const int MAX_RESULT_DOCUMENT_COUNT = 5;
 class SearchServer {
 public:
     template <typename StringContainer>
-    explicit SearchServer(const StringContainer& stop_words);
+    SearchServer(const StringContainer& stop_words)
+        : stop_words_(MakeUniqueNonEmptyStrings(stop_words))  // Extract non-empty stop words
+    {
+        if (!all_of(stop_words_.begin(), stop_words_.end(), IsValidWord)) {
+            throw std::invalid_argument("Some of stop words are invalid");
+        }
+    }
 
     explicit SearchServer(const std::string& stop_words_text);
+
     void AddDocument(int document_id, const std::string& document, DocumentStatus status, const std::vector<int>& ratings);
 
     template <typename DocumentPredicate>
@@ -27,7 +34,7 @@ public:
 
         sort(matched_documents.begin(), matched_documents.end(),
             [](const Document& lhs, const Document& rhs) {
-                if (abs(lhs.relevance - rhs.relevance) < 1e-6) {
+                if (std::abs(lhs.relevance - rhs.relevance) < 1e-6) {
                     return lhs.rating > rhs.rating;
                 }
                 else {
@@ -37,7 +44,6 @@ public:
         if (matched_documents.size() > MAX_RESULT_DOCUMENT_COUNT) {
             matched_documents.resize(MAX_RESULT_DOCUMENT_COUNT);
         }
-
         return matched_documents;
     }
 
