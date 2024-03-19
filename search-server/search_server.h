@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cmath>
 #include <tuple>
+#include <numeric>
 #include <map>
 #include <stdexcept>
 #include <utility>
@@ -10,17 +11,12 @@
 #include "string_processing.h"
 
 const int MAX_RESULT_DOCUMENT_COUNT = 5;
+const double MIN_RELEVANCE_DIFF = 1e-6;
 
 class SearchServer {
 public:
     template <typename StringContainer>
-    SearchServer(const StringContainer& stop_words)
-        : stop_words_(MakeUniqueNonEmptyStrings(stop_words))  // Extract non-empty stop words
-    {
-        if (!all_of(stop_words_.begin(), stop_words_.end(), IsValidWord)) {
-            throw std::invalid_argument("Some of stop words are invalid");
-        }
-    }
+    SearchServer(const StringContainer& stop_words);
 
     explicit SearchServer(const std::string& stop_words_text);
 
@@ -34,7 +30,7 @@ public:
 
         sort(matched_documents.begin(), matched_documents.end(),
             [](const Document& lhs, const Document& rhs) {
-                if (std::abs(lhs.relevance - rhs.relevance) < 1e-6) {
+                if (std::abs(lhs.relevance - rhs.relevance) < MIN_RELEVANCE_DIFF) {
                     return lhs.rating > rhs.rating;
                 }
                 else {
@@ -128,3 +124,12 @@ private:
         return matched_documents;
     }
 };
+
+    template <typename StringContainer>
+    SearchServer::SearchServer(const StringContainer& stop_words)
+        : stop_words_(MakeUniqueNonEmptyStrings(stop_words))  // Extract non-empty stop words
+    {
+        if (!all_of(stop_words_.begin(), stop_words_.end(), IsValidWord)) {
+            throw std::invalid_argument("Some of stop words are invalid");
+        }
+    };
