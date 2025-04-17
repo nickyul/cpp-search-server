@@ -23,7 +23,9 @@
 
 ## Пример использования
 SearchServer server("and in at"s);
+
 server.AddDocument(1, "curly cat curly tail"s, DocumentStatus::ACTUAL, {7, 2, 7});
+
 auto results = server.FindTopDocuments("curly -tail"s);
 
 ## Структура проекта
